@@ -5,3 +5,4 @@ dist/
 build/
 uploads/
 .DS_Store
+*.lnk
