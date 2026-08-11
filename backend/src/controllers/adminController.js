@@ -1,30 +1,68 @@
-const User = require('../models/User');
-const Job = require('../models/Job');
-const Application = require('../models/Application');
-const Company = require('../models/Company');
+const prisma = require('../config/prisma');
 
-// @desc    Get dashboard metrics & analytics
-// @route   GET /api/admin/analytics
-// @access  Private (Admin only)
+const formatUserResponse = (user) => {
+  if (!user) return null;
+  return {
+    _id: user.id,
+    id: user.id,
+    clerkId: user.clerkId,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+    profile: {
+      bio: user.bio,
+      contactNumber: user.contactNumber,
+      skills: user.skills,
+      experience: user.experience,
+      education: user.education,
+      resumeUrl: user.resumeUrl,
+      resumeOriginalName: user.resumeOriginalName,
+    }
+  };
+};
+
+const formatJobResponse = (job) => {
+  if (!job) return null;
+  return {
+    ...job,
+    _id: job.id,
+    id: job.id,
+    company: job.company ? {
+      ...job.company,
+      _id: job.company.id,
+      id: job.company.id
+    } : null
+  };
+};
+
 const getDashboardAnalytics = async (req, res, next) => {
   try {
-    const totalUsers = await User.countDocuments();
-    const totalSeekers = await User.countDocuments({ role: 'seeker' });
-    const totalRecruiters = await User.countDocuments({ role: 'recruiter' });
-    const totalAdmins = await User.countDocuments({ role: 'admin' });
+    const totalUsers = await prisma.user.count();
+    const totalSeekers = await prisma.user.count({ where: { role: 'seeker' } });
+    const totalRecruiters = await prisma.user.count({ where: { role: 'recruiter' } });
+    const totalAdmins = await prisma.user.count({ where: { role: 'admin' } });
 
-    const totalJobs = await Job.countDocuments();
-    const activeJobs = await Job.countDocuments({ isFake: false });
-    const flaggedJobs = await Job.countDocuments({ isFake: true });
+    const totalJobs = await prisma.job.count();
+    const activeJobs = await prisma.job.count({ where: { isFake: false } });
+    const flaggedJobs = await prisma.job.count({ where: { isFake: true } });
 
-    const totalApplications = await Application.countDocuments();
-    const applicationsByStatus = await Application.aggregate([
-      { $group: { _id: '$status', count: { $sum: 1 } } },
-    ]);
+    const totalApplications = await prisma.application.count();
 
-    const jobsByType = await Job.aggregate([
-      { $group: { _id: '$jobType', count: { $sum: 1 } } },
-    ]);
+    const applicationsByStatus = await prisma.application.groupBy({
+      by: ['status'],
+      _count: {
+        _all: true
+      }
+    });
+
+    const jobsByType = await prisma.job.groupBy({
+      by: ['jobType'],
+      _count: {
+        _all: true
+      }
+    });
 
     res.json({
       metrics: {
@@ -39,11 +77,11 @@ const getDashboardAnalytics = async (req, res, next) => {
       },
       analytics: {
         applicationsByStatus: applicationsByStatus.reduce((acc, curr) => {
-          acc[curr._id] = curr.count;
+          acc[curr.status] = curr._count._all;
           return acc;
         }, {}),
         jobsByType: jobsByType.reduce((acc, curr) => {
-          acc[curr._id] = curr.count;
+          acc[curr.jobType] = curr._count._all;
           return acc;
         }, {}),
       },
@@ -53,21 +91,17 @@ const getDashboardAnalytics = async (req, res, next) => {
   }
 };
 
-// @desc    Get all users list
-// @route   GET /api/admin/users
-// @access  Private (Admin only)
 const getAllUsers = async (req, res, next) => {
   try {
-    const users = await User.find({}).sort({ createdAt: -1 });
-    res.json(users);
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(users.map(formatUserResponse));
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Update a user's role
-// @route   PUT /api/admin/users/:id/role
-// @access  Private (Admin only)
 const updateUserRole = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -77,77 +111,84 @@ const updateUserRole = async (req, res, next) => {
       return res.status(400).json({ message: 'Invalid role value' });
     }
 
-    const user = await User.findById(id);
+    const user = await prisma.user.findUnique({ where: { id } });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    user.role = role;
-    await user.save();
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data: { role }
+    });
 
-    res.json({ message: `User role updated to ${role}`, user });
+    res.json({ message: `User role updated to ${role}`, user: formatUserResponse(updatedUser) });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Delete a user
-// @route   DELETE /api/admin/users/:id
-// @access  Private (Admin only)
 const deleteUser = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const user = await User.findById(id);
+    const user = await prisma.user.findUnique({ where: { id } });
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Delete associated applications and jobs if recruiter
+    // Delete associated applications and jobs if recruiter/seeker
     if (user.role === 'recruiter') {
-      await Job.deleteMany({ recruiterId: user.clerkId });
-      await Company.deleteMany({ createdBy: user.clerkId });
+      await prisma.job.deleteMany({ where: { recruiterId: user.clerkId } });
+      await prisma.company.deleteMany({ where: { createdBy: user.clerkId } });
     } else if (user.role === 'seeker') {
-      await Application.deleteMany({ applicantId: user.clerkId });
+      await prisma.application.deleteMany({ where: { clerkApplicantId: user.clerkId } });
     }
 
-    await user.deleteOne();
+    await prisma.user.delete({ where: { id } });
     res.json({ message: 'User and all related data deleted successfully' });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Get all jobs (including flagged ones)
-// @route   GET /api/admin/jobs
-// @access  Private (Admin only)
 const getAllJobsAdmin = async (req, res, next) => {
   try {
-    const jobs = await Job.find({})
-      .populate('company', 'name logoUrl')
-      .sort({ createdAt: -1 });
-    res.json(jobs);
+    const jobs = await prisma.job.findMany({
+      include: {
+        company: {
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(jobs.map(formatJobResponse));
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Toggle fake job flag status
-// @route   PUT /api/admin/jobs/:id/flag
-// @access  Private (Admin only)
 const toggleFakeJob = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const job = await Job.findById(id);
+    const job = await prisma.job.findUnique({ where: { id } });
 
     if (!job) {
       return res.status(404).json({ message: 'Job not found' });
     }
 
-    job.isFake = !job.isFake;
-    await job.save();
+    const updatedJob = await prisma.job.update({
+      where: { id },
+      data: { isFake: !job.isFake },
+      include: {
+        company: true
+      }
+    });
 
-    res.json({ message: `Job marked as ${job.isFake ? 'FAKE' : 'VERIFIED'}`, job });
+    res.json({ message: `Job marked as ${updatedJob.isFake ? 'FAKE' : 'VERIFIED'}`, job: formatJobResponse(updatedJob) });
   } catch (error) {
     next(error);
   }

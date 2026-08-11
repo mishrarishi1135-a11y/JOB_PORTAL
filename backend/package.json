@@ -9,13 +9,15 @@
   },
   "dependencies": {
     "@clerk/clerk-sdk-node": "^5.0.7",
+    "@prisma/client": "^6.19.3",
     "@sentry/node": "^8.8.0",
     "@supabase/supabase-js": "^2.112.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "mongoose": "^8.4.1",
-    "multer": "^1.4.5-lts.1"
+    "multer": "^1.4.5-lts.1",
+    "prisma": "^6.19.3"
   },
   "devDependencies": {
     "nodemon": "^3.1.2"

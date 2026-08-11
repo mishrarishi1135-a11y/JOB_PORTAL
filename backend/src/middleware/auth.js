@@ -1,5 +1,5 @@
 const { createClerkClient } = require('@clerk/clerk-sdk-node');
-const User = require('../models/User');
+const prisma = require('../config/prisma');
 
 const clerkSecretKey = process.env.CLERK_SECRET_KEY || '';
 const isMockAuth = process.env.MOCK_AUTH === 'true' || !clerkSecretKey || clerkSecretKey.includes('xxxxxx');
@@ -21,17 +21,23 @@ const requireAuth = async (req, res, next) => {
         mockRole = token.split(':')[1] || 'seeker';
       }
       
-      let user = await User.findOne({ clerkId: 'mock_user_123' });
+      let user = await prisma.user.findUnique({
+        where: { clerkId: 'mock_user_123' }
+      });
       if (!user) {
-        user = await User.create({
-          clerkId: 'mock_user_123',
-          email: 'mock.user@example.com',
-          name: 'Mock User',
-          role: mockRole,
+        user = await prisma.user.create({
+          data: {
+            clerkId: 'mock_user_123',
+            email: 'mock.user@example.com',
+            name: 'Mock User',
+            role: mockRole,
+          }
         });
       } else if (user.role !== mockRole) {
-        user.role = mockRole;
-        await user.save();
+        user = await prisma.user.update({
+          where: { clerkId: 'mock_user_123' },
+          data: { role: mockRole }
+        });
       }
       req.user = user;
       return next();
@@ -51,8 +57,10 @@ const requireAuth = async (req, res, next) => {
 
     const clerkId = decoded.sub;
 
-    // Retrieve user from MongoDB or create/sync if they don't exist
-    let user = await User.findOne({ clerkId });
+    // Retrieve user from database or create/sync if they don't exist
+    let user = await prisma.user.findUnique({
+      where: { clerkId }
+    });
 
     if (!user) {
       // Fetch user details from Clerk using the Clerk SDK
@@ -68,18 +76,24 @@ const requireAuth = async (req, res, next) => {
         const name = `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() || 'Job Seeker';
 
         // Check if there is an existing user with this email (e.g. created through other means)
-        user = await User.findOne({ email });
+        user = await prisma.user.findUnique({
+          where: { email }
+        });
         if (user) {
           // Update existing user with Clerk ID
-          user.clerkId = clerkId;
-          await user.save();
+          user = await prisma.user.update({
+            where: { email },
+            data: { clerkId }
+          });
         } else {
           // Create new user in our DB
-          user = await User.create({
-            clerkId,
-            email,
-            name,
-            role: 'seeker', // Default role
+          user = await prisma.user.create({
+            data: {
+              clerkId,
+              email,
+              name,
+              role: 'seeker', // Default role
+            }
           });
         }
       } catch (err) {

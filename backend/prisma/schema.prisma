@@ -1,0 +1,93 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  seeker
+  recruiter
+  admin
+}
+
+model User {
+  id                 String         @id @default(uuid())
+  clerkId            String         @unique
+  email              String         @unique
+  name               String
+  role               Role           @default(seeker)
+  bio                String         @default("")
+  contactNumber      String         @default("")
+  skills             String[]
+  experience         Json[]         // Array of experience: [{title, company, duration, description}]
+  education          Json[]         // Array of education: [{school, degree, year}]
+  resumeUrl          String         @default("")
+  resumeOriginalName String         @default("")
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  savedJobs          UserSavedJob[]
+  applications       Application[]
+}
+
+model Company {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  logoUrl     String   @default("")
+  website     String   @default("")
+  description String   @default("")
+  location    String   @default("")
+  createdBy   String   // Clerk ID of recruiter
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  jobs        Job[]
+}
+
+model Job {
+  id           String         @id @default(uuid())
+  title        String
+  description  String
+  requirements String[]
+  skills       String[]
+  location     String
+  salaryRange  String         @default("")
+  jobType      String         @default("Full-time")
+  companyId    String
+  company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  recruiterId  String
+  isFake       Boolean        @default(false)
+  views        Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  savedByUsers UserSavedJob[]
+  applications Application[]
+}
+
+model UserSavedJob {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, jobId])
+}
+
+model Application {
+  id                 String   @id @default(uuid())
+  jobId              String
+  job                Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  applicantId        String   // Foreign key to User.id
+  applicant          User     @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  clerkApplicantId   String   // Clerk ID of applicant
+  resumeUrl          String
+  resumeOriginalName String   @default("resume.pdf")
+  coverLetter        String   @default("")
+  status             String   @default("Applied")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([jobId, clerkApplicantId])
+}

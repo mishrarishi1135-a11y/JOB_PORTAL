@@ -12,7 +12,6 @@ Sentry.init({
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const connectDB = require('./config/db');
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
@@ -23,9 +22,6 @@ const adminRoutes = require('./routes/adminRoutes');
 
 // Initialize app
 const app = express();
-
-// Connect to Database
-connectDB();
 
 // 2. Sentry Request Handler (v8 setup uses setupExpressErrorHandler after routes, but we can set up tracing middleware)
 // Sentry's SDK automatically instruments Express routes when Sentry.init() is called, but we can add trace parent tracking.

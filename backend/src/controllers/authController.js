@@ -1,4 +1,4 @@
-const User = require('../models/User');
+const prisma = require('../config/prisma');
 const path = require('path');
 const fs = require('fs');
 const { createClient } = require('@supabase/supabase-js');
@@ -7,78 +7,132 @@ const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_KEY || '';
 const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
 
-// @desc    Get logged in user profile
-// @route   GET /api/auth/profile
-// @access  Private
+// Helper to format User to match MongoDB shape (especially the profile field)
+const formatUserResponse = (user) => {
+  if (!user) return null;
+  return {
+    _id: user.id,
+    id: user.id,
+    clerkId: user.clerkId,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+    profile: {
+      bio: user.bio,
+      contactNumber: user.contactNumber,
+      skills: user.skills,
+      experience: user.experience,
+      education: user.education,
+      resumeUrl: user.resumeUrl,
+      resumeOriginalName: user.resumeOriginalName,
+    },
+    savedJobs: user.savedJobs ? user.savedJobs.map(sj => {
+      const job = sj.job;
+      if (job) {
+        return {
+          ...job,
+          _id: job.id,
+          id: job.id,
+          company: job.company ? {
+            ...job.company,
+            _id: job.company.id,
+            id: job.company.id
+          } : null
+        };
+      }
+      return null;
+    }).filter(Boolean) : []
+  };
+};
+
 const getProfile = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.id).populate('savedJobs');
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: {
+        savedJobs: {
+          include: {
+            job: {
+              include: {
+                company: true
+              }
+            }
+          }
+        }
+      }
+    });
     if (!user) {
       return res.status(404).json({ message: 'User profile not found' });
     }
-    res.json(user);
+    res.json(formatUserResponse(user));
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Update user profile details
-// @route   PUT /api/auth/profile
-// @access  Private
 const updateProfile = async (req, res, next) => {
   try {
     const { name, bio, contactNumber, skills, experience, education, role } = req.body;
-    const user = await User.findById(req.user.id);
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    // Update basic fields
-    if (name) user.name = name;
-    if (bio !== undefined) user.profile.bio = bio;
-    if (contactNumber !== undefined) user.profile.contactNumber = contactNumber;
     
-    // Only allow updating roles to 'seeker' or 'recruiter' (admin requires database authorization)
-    if (role && ['seeker', 'recruiter'].includes(role)) {
-      user.role = role;
-    }
-
     // Format list attributes
+    let formattedSkills = undefined;
     if (skills) {
-      user.profile.skills = Array.isArray(skills) 
+      formattedSkills = Array.isArray(skills) 
         ? skills 
         : skills.split(',').map((skill) => skill.trim()).filter(Boolean);
     }
-    if (experience) user.profile.experience = experience;
-    if (education) user.profile.education = education;
 
-    const updatedUser = await user.save();
-    res.json(updatedUser);
+    const updateData = {};
+    if (name) updateData.name = name;
+    if (bio !== undefined) updateData.bio = bio;
+    if (contactNumber !== undefined) updateData.contactNumber = contactNumber;
+    if (role && ['seeker', 'recruiter'].includes(role)) updateData.role = role;
+    if (formattedSkills !== undefined) updateData.skills = formattedSkills;
+    if (experience !== undefined) updateData.experience = experience;
+    if (education !== undefined) updateData.education = education;
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: updateData,
+      include: {
+        savedJobs: {
+          include: {
+            job: {
+              include: {
+                company: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    res.json(formatUserResponse(updatedUser));
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Upload resume (PDF format)
-// @route   POST /api/auth/profile/resume
-// @access  Private
 const uploadUserResume = async (req, res, next) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'Please upload a PDF file' });
     }
 
-    const user = await User.findById(req.user.id);
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id }
+    });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
     // Delete old resume file if exists
-    if (user.profile.resumeUrl) {
-      if (user.profile.resumeUrl.includes('/storage/v1/object/public/resumes/')) {
+    if (user.resumeUrl) {
+      if (user.resumeUrl.includes('/storage/v1/object/public/resumes/')) {
         try {
-          const segments = user.profile.resumeUrl.split('/');
+          const segments = user.resumeUrl.split('/');
           const fileName = segments[segments.length - 1];
           if (fileName && supabase) {
             await supabase.storage.from('resumes').remove([fileName]);
@@ -89,7 +143,7 @@ const uploadUserResume = async (req, res, next) => {
           console.error('Error deleting old resume from Supabase:', err.message);
         }
       } else {
-        const oldPath = path.join(__dirname, '../../', user.profile.resumeUrl);
+        const oldPath = path.join(__dirname, '../../', user.resumeUrl);
         if (fs.existsSync(oldPath)) {
           try {
             fs.unlinkSync(oldPath);
@@ -102,10 +156,15 @@ const uploadUserResume = async (req, res, next) => {
 
     // Save URL of the uploaded resume
     const fileUrl = req.file.supabaseUrl;
-    user.profile.resumeUrl = fileUrl;
-    user.profile.resumeOriginalName = req.file.originalname;
+    
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: {
+        resumeUrl: fileUrl,
+        resumeOriginalName: req.file.originalname
+      }
+    });
 
-    await user.save();
     res.json({
       message: 'Resume uploaded successfully',
       resumeUrl: fileUrl,
@@ -116,47 +175,69 @@ const uploadUserResume = async (req, res, next) => {
   }
 };
 
-// @desc    Bookmark / Save a job listing
-// @route   POST /api/auth/saved-jobs/:jobId
-// @access  Private
 const saveJob = async (req, res, next) => {
   try {
     const { jobId } = req.params;
-    const user = await User.findById(req.user.id);
+    
+    // Check if relation already exists
+    const exists = await prisma.userSavedJob.findUnique({
+      where: {
+        userId_jobId: {
+          userId: req.user.id,
+          jobId: jobId
+        }
+      }
+    });
 
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    if (user.savedJobs.includes(jobId)) {
+    if (exists) {
       return res.status(400).json({ message: 'Job already saved' });
     }
 
-    user.savedJobs.push(jobId);
-    await user.save();
+    await prisma.userSavedJob.create({
+      data: {
+        userId: req.user.id,
+        jobId: jobId
+      }
+    });
 
-    res.json({ message: 'Job saved successfully', savedJobs: user.savedJobs });
+    // Fetch updated list of saved jobs
+    const savedJobsList = await prisma.userSavedJob.findMany({
+      where: { userId: req.user.id },
+      select: { jobId: true }
+    });
+
+    res.json({ 
+      message: 'Job saved successfully', 
+      savedJobs: savedJobsList.map(sj => sj.jobId) 
+    });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Unsave a bookmarked job
-// @route   DELETE /api/auth/saved-jobs/:jobId
-// @access  Private
 const unsaveJob = async (req, res, next) => {
   try {
     const { jobId } = req.params;
-    const user = await User.findById(req.user.id);
 
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+    await prisma.userSavedJob.delete({
+      where: {
+        userId_jobId: {
+          userId: req.user.id,
+          jobId: jobId
+        }
+      }
+    });
 
-    user.savedJobs = user.savedJobs.filter((id) => id.toString() !== jobId);
-    await user.save();
+    // Fetch updated list of saved jobs
+    const savedJobsList = await prisma.userSavedJob.findMany({
+      where: { userId: req.user.id },
+      select: { jobId: true }
+    });
 
-    res.json({ message: 'Job unsaved successfully', savedJobs: user.savedJobs });
+    res.json({ 
+      message: 'Job unsaved successfully', 
+      savedJobs: savedJobsList.map(sj => sj.jobId) 
+    });
   } catch (error) {
     next(error);
   }

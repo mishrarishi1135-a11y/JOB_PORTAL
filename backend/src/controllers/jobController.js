@@ -1,15 +1,27 @@
-const Job = require('../models/Job');
-const Company = require('../models/Company');
+const prisma = require('../config/prisma');
 
-// @desc    Create a new job post
-// @route   POST /api/jobs
-// @access  Private (Recruiter only)
+const formatJobResponse = (job) => {
+  if (!job) return null;
+  return {
+    ...job,
+    _id: job.id,
+    id: job.id,
+    company: job.company ? {
+      ...job.company,
+      _id: job.company.id,
+      id: job.company.id
+    } : null
+  };
+};
+
 const createJob = async (req, res, next) => {
   try {
     const { title, description, requirements, skills, location, salaryRange, jobType, companyId } = req.body;
 
-    // Verify company exists and belongs to the recruiter
-    const company = await Company.findById(companyId);
+    // Verify company exists
+    const company = await prisma.company.findUnique({
+      where: { id: companyId }
+    });
     if (!company) {
       return res.status(404).json({ message: 'Company not found' });
     }
@@ -18,94 +30,118 @@ const createJob = async (req, res, next) => {
       return res.status(403).json({ message: 'You are not authorized to post a job for this company' });
     }
 
-    const job = await Job.create({
-      title,
-      description,
-      requirements: Array.isArray(requirements) ? requirements : requirements.split(',').map(r => r.trim()).filter(Boolean),
-      skills: Array.isArray(skills) ? skills : skills.split(',').map(s => s.trim()).filter(Boolean),
-      location,
-      salaryRange,
-      jobType,
-      company: companyId,
-      recruiterId: req.user.clerkId,
+    const job = await prisma.job.create({
+      data: {
+        title,
+        description,
+        requirements: Array.isArray(requirements) ? requirements : requirements.split(',').map(r => r.trim()).filter(Boolean),
+        skills: Array.isArray(skills) ? skills : skills.split(',').map(s => s.trim()).filter(Boolean),
+        location,
+        salaryRange: salaryRange || '',
+        jobType: jobType || 'Full-time',
+        companyId,
+        recruiterId: req.user.clerkId,
+      },
+      include: {
+        company: true
+      }
     });
 
-    res.status(201).json(job);
+    res.status(201).json(formatJobResponse(job));
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Get jobs with filters
-// @route   GET /api/jobs
-// @access  Public
 const getJobs = async (req, res, next) => {
   try {
-    const { search, location, jobType, skills, minSalary } = req.query;
+    const { search, location, jobType, skills } = req.query;
 
-    const query = { isFake: false }; // Don't show fake jobs
+    const where = { isFake: false };
 
     if (search) {
-      query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
       ];
     }
 
     if (location) {
-      query.location = { $regex: location, $options: 'i' };
+      where.location = { contains: location, mode: 'insensitive' };
     }
 
     if (jobType) {
-      query.jobType = jobType;
+      where.jobType = jobType;
     }
 
     if (skills) {
-      const skillsList = skills.split(',').map(s => s.trim());
-      query.skills = { $in: skillsList.map(s => new RegExp(s, 'i')) };
+      const skillsList = skills.split(',').map(s => s.trim()).filter(Boolean);
+      if (skillsList.length > 0) {
+        where.skills = { hasSome: skillsList };
+      }
     }
 
-    // A simple regex match for salary if it is text, or numerical logic.
-    // For this portal, since salary range is string (e.g. "$80,000 - $100,000"), we can do simple text matches
-    // or return all and let the client handle filtering. Let's do basic filter options.
+    const jobs = await prisma.job.findMany({
+      where,
+      include: {
+        company: {
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true,
+            location: true,
+            website: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
 
-    const jobs = await Job.find(query)
-      .populate('company', 'name logoUrl location website')
-      .sort({ createdAt: -1 });
-
-    res.json(jobs);
+    res.json(jobs.map(formatJobResponse));
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Get details of a single job
-// @route   GET /api/jobs/:id
-// @access  Public
 const getJobById = async (req, res, next) => {
   try {
-    const job = await Job.findById(req.params.id).populate('company', 'name logoUrl description website location');
+    const job = await prisma.job.findUnique({
+      where: { id: req.params.id },
+      include: {
+        company: true
+      }
+    });
     if (!job) {
       return res.status(404).json({ message: 'Job not found' });
     }
 
     // Increment views counter
-    job.views += 1;
-    await job.save();
+    const updatedJob = await prisma.job.update({
+      where: { id: req.params.id },
+      data: {
+        views: {
+          increment: 1
+        }
+      },
+      include: {
+        company: true
+      }
+    });
 
-    res.json(job);
+    res.json(formatJobResponse(updatedJob));
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Update a job post
-// @route   PUT /api/jobs/:id
-// @access  Private (Recruiter only)
 const updateJob = async (req, res, next) => {
   try {
     const { title, description, requirements, skills, location, salaryRange, jobType } = req.body;
-    let job = await Job.findById(req.params.id);
+    let job = await prisma.job.findUnique({
+      where: { id: req.params.id }
+    });
 
     if (!job) {
       return res.status(404).json({ message: 'Job not found' });
@@ -116,32 +152,38 @@ const updateJob = async (req, res, next) => {
       return res.status(403).json({ message: 'Not authorized to edit this job post' });
     }
 
-    job.title = title || job.title;
-    job.description = description || job.description;
-    job.location = location || job.location;
-    job.salaryRange = salaryRange || job.salaryRange;
-    job.jobType = jobType || job.jobType;
-
+    const updateData = {};
+    if (title) updateData.title = title;
+    if (description) updateData.description = description;
+    if (location) updateData.location = location;
+    if (salaryRange !== undefined) updateData.salaryRange = salaryRange;
+    if (jobType) updateData.jobType = jobType;
     if (requirements) {
-      job.requirements = Array.isArray(requirements) ? requirements : requirements.split(',').map(r => r.trim()).filter(Boolean);
+      updateData.requirements = Array.isArray(requirements) ? requirements : requirements.split(',').map(r => r.trim()).filter(Boolean);
     }
     if (skills) {
-      job.skills = Array.isArray(skills) ? skills : skills.split(',').map(s => s.trim()).filter(Boolean);
+      updateData.skills = Array.isArray(skills) ? skills : skills.split(',').map(s => s.trim()).filter(Boolean);
     }
 
-    const updatedJob = await job.save();
-    res.json(updatedJob);
+    const updatedJob = await prisma.job.update({
+      where: { id: req.params.id },
+      data: updateData,
+      include: {
+        company: true
+      }
+    });
+
+    res.json(formatJobResponse(updatedJob));
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Delete a job post
-// @route   DELETE /api/jobs/:id
-// @access  Private (Recruiter only)
 const deleteJob = async (req, res, next) => {
   try {
-    const job = await Job.findById(req.params.id);
+    const job = await prisma.job.findUnique({
+      where: { id: req.params.id }
+    });
 
     if (!job) {
       return res.status(404).json({ message: 'Job not found' });
@@ -152,20 +194,34 @@ const deleteJob = async (req, res, next) => {
       return res.status(403).json({ message: 'Not authorized to delete this job post' });
     }
 
-    await job.deleteOne();
+    await prisma.job.delete({
+      where: { id: req.params.id }
+    });
+
     res.json({ message: 'Job post deleted successfully' });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Get recruiter's posted jobs
-// @route   GET /api/jobs/recruiter/my-posts
-// @access  Private (Recruiter only)
 const getRecruiterJobs = async (req, res, next) => {
   try {
-    const jobs = await Job.find({ recruiterId: req.user.clerkId }).populate('company', 'name logoUrl');
-    res.json(jobs);
+    const jobs = await prisma.job.findMany({
+      where: { recruiterId: req.user.clerkId },
+      include: {
+        company: {
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+    res.json(jobs.map(formatJobResponse));
   } catch (error) {
     next(error);
   }

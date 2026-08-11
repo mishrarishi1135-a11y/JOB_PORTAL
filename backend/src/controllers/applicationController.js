@@ -1,88 +1,119 @@
-const Application = require('../models/Application');
-const Job = require('../models/Job');
-const User = require('../models/User');
+const prisma = require('../config/prisma');
 
-// @desc    Apply for a job
-// @route   POST /api/applications/:jobId
-// @access  Private (Seeker only)
+const formatApplicationResponse = (app) => {
+  if (!app) return null;
+  return {
+    ...app,
+    _id: app.id,
+    id: app.id,
+    job: app.job ? {
+      ...app.job,
+      _id: app.job.id,
+      id: app.job.id,
+      company: app.job.company ? {
+        ...app.job.company,
+        _id: app.job.company.id,
+        id: app.job.company.id
+      } : null
+    } : null,
+    applicant: app.applicant ? {
+      ...app.applicant,
+      _id: app.applicant.id,
+      id: app.applicant.id,
+      profile: {
+        bio: app.applicant.bio,
+        contactNumber: app.applicant.contactNumber,
+        skills: app.applicant.skills,
+        experience: app.applicant.experience,
+        education: app.applicant.education,
+        resumeUrl: app.applicant.resumeUrl,
+        resumeOriginalName: app.applicant.resumeOriginalName
+      }
+    } : null
+  };
+};
+
 const applyToJob = async (req, res, next) => {
   try {
     const { jobId } = req.params;
     const { coverLetter, customResumeUrl, customResumeName } = req.body;
 
-    // Check if job exists
-    const job = await Job.findById(jobId);
+    const job = await prisma.job.findUnique({
+      where: { id: jobId }
+    });
     if (!job) {
       return res.status(404).json({ message: 'Job not found' });
     }
 
-    // Verify user profile resume exists
-    const user = await User.findById(req.user.id);
-    const resumeUrl = customResumeUrl || user.profile.resumeUrl;
-    const resumeOriginalName = customResumeName || user.profile.resumeOriginalName;
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id }
+    });
+    const resumeUrl = customResumeUrl || user.resumeUrl;
+    const resumeOriginalName = customResumeName || user.resumeOriginalName;
 
     if (!resumeUrl) {
       return res.status(400).json({ message: 'Please upload a resume in your profile before applying' });
     }
 
     // Check if already applied
-    const alreadyApplied = await Application.findOne({
-      job: jobId,
-      applicantId: req.user.clerkId,
+    const alreadyApplied = await prisma.application.findUnique({
+      where: {
+        jobId_clerkApplicantId: {
+          jobId: jobId,
+          clerkApplicantId: req.user.clerkId
+        }
+      }
     });
 
     if (alreadyApplied) {
       return res.status(400).json({ message: 'You have already applied to this job listing' });
     }
 
-    const application = await Application.create({
-      job: jobId,
-      applicant: req.user.id,
-      applicantId: req.user.clerkId,
-      resumeUrl,
-      resumeOriginalName,
-      coverLetter,
+    const application = await prisma.application.create({
+      data: {
+        jobId: jobId,
+        applicantId: req.user.id,
+        clerkApplicantId: req.user.clerkId,
+        resumeUrl,
+        resumeOriginalName,
+        coverLetter: coverLetter || '',
+      }
     });
 
-    res.status(201).json(application);
+    res.status(201).json(formatApplicationResponse(application));
   } catch (error) {
-    if (error.code === 11000) {
-      return res.status(400).json({ message: 'You have already applied to this job listing' });
-    }
     next(error);
   }
 };
 
-// @desc    Get seeker's applications
-// @route   GET /api/applications/seeker/my-applications
-// @access  Private (Seeker only)
 const getSeekerApplications = async (req, res, next) => {
   try {
-    const applications = await Application.find({ applicantId: req.user.clerkId })
-      .populate({
-        path: 'job',
-        populate: {
-          path: 'company',
-          select: 'name logoUrl location',
-        },
-      })
-      .sort({ createdAt: -1 });
-
-    res.json(applications);
+    const applications = await prisma.application.findMany({
+      where: { clerkApplicantId: req.user.clerkId },
+      include: {
+        job: {
+          include: {
+            company: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+    res.json(applications.map(formatApplicationResponse));
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Get applicants for a specific job
-// @route   GET /api/applications/job/:jobId
-// @access  Private (Recruiter only)
 const getJobApplicants = async (req, res, next) => {
   try {
     const { jobId } = req.params;
     
-    // Verify job belongs to recruiter
-    const job = await Job.findById(jobId);
+    const job = await prisma.job.findUnique({
+      where: { id: jobId }
+    });
     if (!job) {
       return res.status(404).json({ message: 'Job not found' });
     }
@@ -91,19 +122,22 @@ const getJobApplicants = async (req, res, next) => {
       return res.status(403).json({ message: 'Not authorized to view applicants for this job' });
     }
 
-    const applications = await Application.find({ job: jobId })
-      .populate('applicant', 'name email profile')
-      .sort({ createdAt: -1 });
+    const applications = await prisma.application.findMany({
+      where: { jobId: jobId },
+      include: {
+        applicant: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
 
-    res.json(applications);
+    res.json(applications.map(formatApplicationResponse));
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Update application status
-// @route   PUT /api/applications/:id/status
-// @access  Private (Recruiter only)
 const updateApplicationStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -113,20 +147,37 @@ const updateApplicationStatus = async (req, res, next) => {
       return res.status(400).json({ message: 'Invalid status value' });
     }
 
-    const application = await Application.findById(id).populate('job');
+    const application = await prisma.application.findUnique({
+      where: { id },
+      include: {
+        job: true
+      }
+    });
     if (!application) {
       return res.status(404).json({ message: 'Application not found' });
     }
 
-    // Verify that the logged-in user owns the job for this application
+    // Verify ownership
     if (application.job.recruiterId !== req.user.clerkId && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Not authorized to update application status' });
     }
 
-    application.status = status;
-    await application.save();
+    const updatedApplication = await prisma.application.update({
+      where: { id },
+      data: { status },
+      include: {
+        job: {
+          include: {
+            company: true
+          }
+        }
+      }
+    });
 
-    res.json({ message: `Application status updated to ${status}`, application });
+    res.json({ 
+      message: `Application status updated to ${status}`, 
+      application: formatApplicationResponse(updatedApplication) 
+    });
   } catch (error) {
     next(error);
   }
