@@ -4,7 +4,7 @@ import { Briefcase, Building2, Users, Plus, ListCollapse, User, ExternalLink, Ca
 import axios from 'axios';
 
 const RecruiterDashboard = () => {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, getToken } = useAuth();
   const [activeTab, setActiveTab] = useState('jobs');
 
   // Recruiter Data states
@@ -35,7 +35,7 @@ const RecruiterDashboard = () => {
   // Fetch recruiter's companies
   const fetchCompanies = async () => {
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/companies/my-companies`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -53,7 +53,7 @@ const RecruiterDashboard = () => {
   // Fetch recruiter's posted jobs
   const fetchJobs = async () => {
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/jobs/recruiter/my-posts`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -84,7 +84,7 @@ const RecruiterDashboard = () => {
     setActionLoading(true);
     setMsg({ type: '', text: '' });
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       await axios.post(`${import.meta.env.VITE_API_URL}/api/jobs`, jobForm, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -110,7 +110,7 @@ const RecruiterDashboard = () => {
     setActionLoading(true);
     setMsg({ type: '', text: '' });
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       const res = await axios.post(`${import.meta.env.VITE_API_URL}/api/companies`, companyForm, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -132,7 +132,7 @@ const RecruiterDashboard = () => {
     setLoadingApplicants(true);
     setApplicants([]);
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/applications/job/${job._id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -148,7 +148,7 @@ const RecruiterDashboard = () => {
   // Update applicant status
   const handleUpdateStatus = async (appId, newStatus) => {
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       await axios.put(
         `${import.meta.env.VITE_API_URL}/api/applications/${appId}/status`,
         { status: newStatus },
@@ -172,7 +172,7 @@ const RecruiterDashboard = () => {
   const handleDeleteJob = async (jobId) => {
     if (!window.confirm('Are you sure you want to permanently delete this job listing?')) return;
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       await axios.delete(`${import.meta.env.VITE_API_URL}/api/jobs/${jobId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });

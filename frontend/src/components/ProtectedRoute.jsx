@@ -4,7 +4,7 @@ import { useAuth, useUser } from '@clerk/clerk-react';
 import axios from 'axios';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { isSignedIn, isLoaded, getToken } = useAuth();
   const { user } = useUser();
   const [dbUser, setDbUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -13,7 +13,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
     const checkUserRole = async () => {
       if (isLoaded && isSignedIn && user) {
         try {
-          const token = await window.Clerk.session.getToken();
+          const token = await getToken();
           const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/auth/profile`, {
             headers: { Authorization: `Bearer ${token}` },
           });

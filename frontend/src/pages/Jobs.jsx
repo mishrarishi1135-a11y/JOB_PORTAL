@@ -6,7 +6,7 @@ import axios from 'axios';
 import JobCard from '../components/JobCard';
 
 const Jobs = () => {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, getToken } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Job data state
@@ -50,7 +50,7 @@ const Jobs = () => {
   const fetchProfile = async () => {
     if (!isSignedIn) return;
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/auth/profile`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -106,7 +106,7 @@ const Jobs = () => {
 
     const isAlreadySaved = savedJobsList.includes(jobId);
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       const config = { headers: { Authorization: `Bearer ${token}` } };
       
       if (isAlreadySaved) {

@@ -7,7 +7,7 @@ import axios from 'axios';
 const JobDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, getToken } = useAuth();
 
   // Job Data
   const [job, setJob] = useState(null);
@@ -39,7 +39,7 @@ const JobDetails = () => {
   const checkApplicationStatus = async () => {
     if (!isSignedIn) return;
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       const config = { headers: { Authorization: `Bearer ${token}` } };
       
       // Fetch user profile
@@ -75,7 +75,7 @@ const JobDetails = () => {
     setSubmitting(true);
     setError('');
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       await axios.post(
         `${import.meta.env.VITE_API_URL}/api/applications/${id}`,
         { coverLetter },
@@ -96,7 +96,7 @@ const JobDetails = () => {
   const handleAdminDelete = async () => {
     if (!window.confirm('Admin Action: Are you sure you want to remove this job listing?')) return;
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       await axios.delete(`${import.meta.env.VITE_API_URL}/api/jobs/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -113,7 +113,7 @@ const JobDetails = () => {
     const action = job?.isFake ? 'VERIFY' : 'FLAG FAKE';
     if (!window.confirm(`Admin Action: Are you sure you want to ${action} this listing?`)) return;
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       const res = await axios.put(`${import.meta.env.VITE_API_URL}/api/admin/jobs/${id}/flag`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });

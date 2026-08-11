@@ -5,7 +5,7 @@ import { Briefcase, Sun, Moon, LayoutDashboard, User, ShieldAlert, LogIn } from 
 import axios from 'axios';
 
 const Navbar = () => {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, getToken } = useAuth();
   const { user } = useUser();
   const navigate = useNavigate();
   
@@ -26,7 +26,7 @@ const Navbar = () => {
     const fetchDbUser = async () => {
       if (isSignedIn && user) {
         try {
-          const token = await window.Clerk.session.getToken();
+          const token = await getToken();
           const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/auth/profile`, {
             headers: { Authorization: `Bearer ${token}` },
           });

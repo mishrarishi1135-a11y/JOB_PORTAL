@@ -4,7 +4,7 @@ import { User, FileText, Briefcase, GraduationCap, CheckCircle2, AlertCircle, Up
 import axios from 'axios';
 
 const Profile = () => {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, getToken } = useAuth();
   const { user } = useUser();
 
   // Profile data states
@@ -37,7 +37,7 @@ const Profile = () => {
   const loadProfile = async () => {
     if (!isSignedIn) return;
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/auth/profile`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -71,7 +71,7 @@ const Profile = () => {
     setMsg({ type: '', text: '' });
 
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       await axios.put(
         `${import.meta.env.VITE_API_URL}/api/auth/profile`,
         { name, role, bio, contactNumber, skills, experience, education },
@@ -103,7 +103,7 @@ const Profile = () => {
     formData.append('resume', file);
 
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/auth/profile/resume`,
         formData,

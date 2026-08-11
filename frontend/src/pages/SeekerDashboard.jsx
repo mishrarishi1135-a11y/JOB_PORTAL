@@ -6,7 +6,7 @@ import axios from 'axios';
 import JobCard from '../components/JobCard';
 
 const SeekerDashboard = () => {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, getToken } = useAuth();
   const [activeTab, setActiveTab] = useState('applications');
 
   // Application states
@@ -22,7 +22,7 @@ const SeekerDashboard = () => {
   // Fetch applications
   const fetchApplications = async () => {
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/applications/seeker/my-applications`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -38,7 +38,7 @@ const SeekerDashboard = () => {
   // Fetch profile saved jobs
   const fetchSavedJobs = async () => {
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/auth/profile`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -60,7 +60,7 @@ const SeekerDashboard = () => {
   // Remove bookmark handler
   const handleUnsave = async (jobId) => {
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       await axios.delete(`${import.meta.env.VITE_API_URL}/api/auth/saved-jobs/${jobId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });

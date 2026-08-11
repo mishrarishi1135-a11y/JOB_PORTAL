@@ -4,7 +4,7 @@ import { Shield, Users, Briefcase, FileText, CheckCircle2, XCircle, Trash2, Shie
 import axios from 'axios';
 
 const AdminDashboard = () => {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, getToken } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState('users');
 
   // Admin Data states
@@ -20,7 +20,7 @@ const AdminDashboard = () => {
   // Fetch metrics & analytics
   const fetchAnalytics = async () => {
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/admin/analytics`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -35,7 +35,7 @@ const AdminDashboard = () => {
   // Fetch all users
   const fetchUsers = async () => {
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/admin/users`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -50,7 +50,7 @@ const AdminDashboard = () => {
   // Fetch all jobs
   const fetchJobs = async () => {
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/admin/jobs`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -79,7 +79,7 @@ const AdminDashboard = () => {
     if (!window.confirm(`Admin Action: Are you sure you want to change this user's role to "${nextRole.toUpperCase()}"?`)) return;
 
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       await axios.put(
         `${import.meta.env.VITE_API_URL}/api/admin/users/${userId}/role`,
         { role: nextRole },
@@ -105,7 +105,7 @@ const AdminDashboard = () => {
     if (!window.confirm(`Admin Action: Are you sure you want to delete user "${name}"? This removes their profile and all related applications or job postings.`)) return;
 
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       await axios.delete(`${import.meta.env.VITE_API_URL}/api/admin/users/${userId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -121,7 +121,7 @@ const AdminDashboard = () => {
   // Flag/Unflag jobs
   const handleToggleJobFlag = async (jobId) => {
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       const res = await axios.put(`${import.meta.env.VITE_API_URL}/api/admin/jobs/${jobId}/flag`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -144,7 +144,7 @@ const AdminDashboard = () => {
   const handleDeleteJobAdmin = async (jobId) => {
     if (!window.confirm('Admin Action: Are you sure you want to delete this job listing permanently?')) return;
     try {
-      const token = await window.Clerk.session.getToken();
+      const token = await getToken();
       await axios.delete(`${import.meta.env.VITE_API_URL}/api/jobs/${jobId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
