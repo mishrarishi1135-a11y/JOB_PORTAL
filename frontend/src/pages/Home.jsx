@@ -15,11 +15,6 @@ const Home = () => {
     navigate(`/jobs?${params.toString()}`);
   };
 
-  // Test error for Sentry auditing
-  const triggerSentryError = () => {
-    throw new Error('Verification: Sentry React SDK successfully captured this frontend exception!');
-  };
-
   return (
     <div className="page-transition" style={styles.page}>
       {/* Background Mesh Glow */}
@@ -144,21 +139,6 @@ const Home = () => {
               <h3>Premium UX Theme</h3>
               <p>Enjoy our glassmorphic visual system, offering smooth transitions, micro-animations, and a highly requested toggleable Light / Dark theme.</p>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Developer Section (Verify Sentry) */}
-      <section style={styles.devSection}>
-        <div className="container" style={styles.devContainer}>
-          <div className="glass-card" style={styles.devCard}>
-            <h4>Audit Error Monitoring (Sentry Integration)</h4>
-            <p style={styles.devText}>
-              Test frontend telemetry reporting. Clicking this button triggers a runtime exception to verify Sentry dashboard interception.
-            </p>
-            <button onClick={triggerSentryError} className="btn btn-danger" style={{ alignSelf: 'center' }}>
-              Trigger UI Test Error
-            </button>
           </div>
         </div>
       </section>
@@ -335,28 +315,6 @@ const styles = {
     '&:hover': {
       borderColor: 'var(--accent-primary)',
     }
-  },
-  devSection: {
-    padding: '40px 0',
-  },
-  devContainer: {
-    display: 'flex',
-    justifyContent: 'center',
-  },
-  devCard: {
-    maxWidth: '600px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '16px',
-    borderColor: 'rgba(239, 68, 68, 0.25)',
-    background: 'rgba(239, 68, 68, 0.02)',
-    padding: '24px',
-  },
-  devText: {
-    fontSize: '0.9rem',
-    color: 'var(--text-secondary)',
-    lineHeight: '1.5',
-    textAlign: 'center',
   }
 };
 
