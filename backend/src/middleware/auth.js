@@ -1,7 +1,10 @@
 const { createClerkClient } = require('@clerk/clerk-sdk-node');
 const User = require('../models/User');
 
-const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
+const clerkSecretKey = process.env.CLERK_SECRET_KEY || '';
+const isMockAuth = process.env.MOCK_AUTH === 'true' || !clerkSecretKey || clerkSecretKey.includes('xxxxxx');
+
+const clerkClient = (clerkSecretKey && !isMockAuth) ? createClerkClient({ secretKey: clerkSecretKey }) : null;
 
 const requireAuth = async (req, res, next) => {
   try {
@@ -12,9 +15,34 @@ const requireAuth = async (req, res, next) => {
 
     const token = authHeader.split(' ')[1];
     
+    if (isMockAuth) {
+      let mockRole = 'seeker';
+      if (token && token.startsWith('mock_token_abc:')) {
+        mockRole = token.split(':')[1] || 'seeker';
+      }
+      
+      let user = await User.findOne({ clerkId: 'mock_user_123' });
+      if (!user) {
+        user = await User.create({
+          clerkId: 'mock_user_123',
+          email: 'mock.user@example.com',
+          name: 'Mock User',
+          role: mockRole,
+        });
+      } else if (user.role !== mockRole) {
+        user.role = mockRole;
+        await user.save();
+      }
+      req.user = user;
+      return next();
+    }
+
     // Verify the JWT token using Clerk's SDK
     let decoded;
     try {
+      if (!clerkClient) {
+        throw new Error('Clerk client not initialized.');
+      }
       decoded = await clerkClient.verifyToken(token);
     } catch (err) {
       console.error('Clerk Token Verification Error:', err.message);
