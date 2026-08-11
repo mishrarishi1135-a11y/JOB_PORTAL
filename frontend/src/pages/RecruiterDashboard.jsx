@@ -460,7 +460,7 @@ const RecruiterDashboard = () => {
                       )}
 
                       {/* CV Link */}
-                      <a href={`${import.meta.env.VITE_API_URL}${app.resumeUrl}`} target="_blank" rel="noopener noreferrer" style={styles.candidateResumeLink}>
+                      <a href={app.resumeUrl && app.resumeUrl.startsWith('http') ? app.resumeUrl : `${import.meta.env.VITE_API_URL}${app.resumeUrl}`} target="_blank" rel="noopener noreferrer" style={styles.candidateResumeLink}>
                         <ExternalLink size={14} />
                         Download Submitted Resume (PDF)
                       </a>

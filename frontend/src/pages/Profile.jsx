@@ -242,7 +242,7 @@ const Profile = () => {
                     <div style={styles.pdfIcon}>PDF</div>
                     <div style={{ flex: 1 }}>
                       <p style={styles.resumeName}>{resumeName || 'resume.pdf'}</p>
-                      <a href={`${import.meta.env.VITE_API_URL}${resumeUrl}`} target="_blank" rel="noopener noreferrer" style={styles.downloadLink}>
+                      <a href={resumeUrl && resumeUrl.startsWith('http') ? resumeUrl : `${import.meta.env.VITE_API_URL}${resumeUrl}`} target="_blank" rel="noopener noreferrer" style={styles.downloadLink}>
                         View Document
                       </a>
                     </div>

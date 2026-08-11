@@ -1,6 +1,11 @@
 const User = require('../models/User');
 const path = require('path');
 const fs = require('fs');
+const { createClient } = require('@supabase/supabase-js');
+
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_KEY || '';
+const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
 
 // @desc    Get logged in user profile
 // @route   GET /api/auth/profile
@@ -71,25 +76,39 @@ const uploadUserResume = async (req, res, next) => {
 
     // Delete old resume file if exists
     if (user.profile.resumeUrl) {
-      const oldPath = path.join(__dirname, '../../', user.profile.resumeUrl);
-      if (fs.existsSync(oldPath)) {
+      if (user.profile.resumeUrl.includes('/storage/v1/object/public/resumes/')) {
         try {
-          fs.unlinkSync(oldPath);
+          const segments = user.profile.resumeUrl.split('/');
+          const fileName = segments[segments.length - 1];
+          if (fileName && supabase) {
+            await supabase.storage.from('resumes').remove([fileName]);
+          } else if (fileName && !supabase) {
+            console.warn('Supabase client not initialized, skipping file deletion from storage.');
+          }
         } catch (err) {
-          console.error('Error deleting old resume:', err.message);
+          console.error('Error deleting old resume from Supabase:', err.message);
+        }
+      } else {
+        const oldPath = path.join(__dirname, '../../', user.profile.resumeUrl);
+        if (fs.existsSync(oldPath)) {
+          try {
+            fs.unlinkSync(oldPath);
+          } catch (err) {
+            console.error('Error deleting old resume:', err.message);
+          }
         }
       }
     }
 
-    // Save relative URL of the uploaded resume
-    const relativePath = `/uploads/resumes/${req.file.filename}`;
-    user.profile.resumeUrl = relativePath;
+    // Save URL of the uploaded resume
+    const fileUrl = req.file.supabaseUrl;
+    user.profile.resumeUrl = fileUrl;
     user.profile.resumeOriginalName = req.file.originalname;
 
     await user.save();
     res.json({
       message: 'Resume uploaded successfully',
-      resumeUrl: relativePath,
+      resumeUrl: fileUrl,
       resumeOriginalName: req.file.originalname,
     });
   } catch (error) {

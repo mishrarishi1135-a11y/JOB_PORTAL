@@ -205,7 +205,7 @@ const styles = {
   titleGradient: {
     background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))',
     WebkitBackgroundClip: 'text',
-    WebkitTextFill-color: 'transparent',
+    WebkitTextFillColor: 'transparent',
   },
   heroSub: {
     fontSize: '1.15rem',
